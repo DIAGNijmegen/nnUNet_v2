@@ -3,6 +3,7 @@ import multiprocessing
 import os
 import shutil
 import sys
+import warnings
 from copy import deepcopy
 from datetime import datetime
 from time import time, sleep
@@ -23,8 +24,9 @@ from torch._dynamo import OptimizedModule
 
 from nnunetv2.configuration import ANISO_THRESHOLD, default_num_processes
 from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder
-from nnunetv2.inference.export_prediction import export_prediction_from_softmax, resample_and_save
-from nnunetv2.inference.sliding_window_prediction import compute_gaussian, predict_sliding_window_return_logits
+from nnunetv2.inference.export_prediction import export_prediction_from_logits, resample_and_save
+from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
+from nnunetv2.inference.sliding_window_prediction import compute_gaussian
 from nnunetv2.paths import nnUNet_preprocessed, nnUNet_results
 from nnunetv2.training.data_augmentation.compute_initial_patch_size import get_patch_size
 from nnunetv2.training.data_augmentation.custom_transforms.cascade_transforms import MoveSegAsOneHotToData, \
@@ -49,7 +51,7 @@ from nnunetv2.training.loss.dice import get_tp_fp_fn_tn, MemoryEfficientSoftDice
 from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
 from nnunetv2.utilities.collate_outputs import collate_outputs
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
-from nnunetv2.utilities.file_path_utilities import should_i_save_to_file, check_workers_busy
+from nnunetv2.utilities.file_path_utilities import check_workers_alive_and_busy
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.label_handling.label_handling import convert_labelmap_to_one_hot, determine_num_input_channels
@@ -366,6 +368,7 @@ class nnUNetTrainer(object):
         # we give each output a weight which decreases exponentially (division by 2) as the resolution decreases
         # this gives higher resolution outputs more weight in the loss
         weights = np.array([1 / (2 ** i) for i in range(len(deep_supervision_scales))])
+        weights[-1] = 0
 
         # we don't use the lowest 2 outputs. Normalize weights so that they sum to 1
         weights = weights / weights.sum()
@@ -853,7 +856,18 @@ class nnUNetTrainer(object):
         if self.local_rank == 0 and isfile(join(self.output_folder, "checkpoint_latest.pth")):
             os.remove(join(self.output_folder, "checkpoint_latest.pth"))
 
+        # shut down dataloaders
+        old_stdout = sys.stdout
+        with open(os.devnull, 'w') as f:
+            sys.stdout = f
+            if self.dataloader_train is not None:
+                self.dataloader_train._finish()
+            if self.dataloader_val is not None:
+                self.dataloader_val._finish()
+            sys.stdout = old_stdout
+
         empty_cache(self.device)
+        self.print_to_log_file("Training done.")
 
     def on_train_epoch_start(self):
         self.network.train()
@@ -1106,15 +1120,15 @@ class nnUNetTrainer(object):
         self.set_deep_supervision_enabled(False)
         self.network.eval()
 
-        num_seg_heads = self.label_manager.num_segmentation_heads
+        predictor = nnUNetPredictor(tile_step_size=0.5, use_gaussian=True, use_mirroring=True,
+                                    perform_everything_on_gpu=True, device=self.device, verbose=False,
+                                    verbose_preprocessing=False, allow_tqdm=False)
+        predictor.manual_initialization(self.network, self.plans_manager, self.configuration_manager, None,
+                                        self.dataset_json, self.__class__.__name__,
+                                        self.inference_allowed_mirroring_axes)
 
-        inference_gaussian = torch.from_numpy(
-            compute_gaussian(self.configuration_manager.patch_size, sigma_scale=1. / 8))
-        # spawn allows the use of GPU in the background process in case somebody wants to do this. Not recommended. Trust me.
-        # segmentation_export_pool = multiprocessing.get_context('spawn').Pool(default_num_processes)
-        # let's not use this until someone really needs it!
-        # segmentation_export_pool = multiprocessing.Pool(default_num_processes)
         with multiprocessing.get_context("spawn").Pool(default_num_processes) as segmentation_export_pool:
+            worker_list = [i for i in segmentation_export_pool._pool]
             validation_output_folder = join(self.output_folder, 'validation')
             maybe_mkdir_p(validation_output_folder)
 
@@ -1134,13 +1148,14 @@ class nnUNetTrainer(object):
                 _ = [maybe_mkdir_p(join(self.output_folder_base, 'predicted_next_stage', n)) for n in next_stages]
 
             results = []
+
             for k in dataset_val.keys():
-                proceed = not check_workers_busy(segmentation_export_pool, results,
-                                                 allowed_num_queued=2 * len(segmentation_export_pool._pool))
+                proceed = not check_workers_alive_and_busy(segmentation_export_pool, worker_list, results,
+                                                 allowed_num_queued=2)
                 while not proceed:
                     sleep(0.1)
-                    proceed = not check_workers_busy(segmentation_export_pool, results,
-                                                     allowed_num_queued=2 * len(segmentation_export_pool._pool))
+                    proceed = not check_workers_alive_and_busy(segmentation_export_pool, worker_list, results,
+                                                     allowed_num_queued=2)
 
                 self.print_to_log_file(f"predicting {k}")
                 data, seg, properties = dataset_val.load_case(k)
@@ -1148,41 +1163,27 @@ class nnUNetTrainer(object):
                 if self.is_cascaded:
                     data = np.vstack((data, convert_labelmap_to_one_hot(seg[-1], self.label_manager.foreground_labels,
                                                                         output_dtype=data.dtype)))
+                with warnings.catch_warnings():
+                    # ignore 'The given NumPy array is not writable' warning
+                    warnings.simplefilter("ignore")
+                    data = torch.from_numpy(data)
 
                 output_filename_truncated = join(validation_output_folder, k)
 
                 try:
-                    prediction = predict_sliding_window_return_logits(self.network, data, num_seg_heads,
-                                                                      tile_size=self.configuration_manager.patch_size,
-                                                                      mirror_axes=self.inference_allowed_mirroring_axes,
-                                                                      tile_step_size=0.5,
-                                                                      use_gaussian=True,
-                                                                      precomputed_gaussian=inference_gaussian,
-                                                                      perform_everything_on_gpu=True,
-                                                                      verbose=False,
-                                                                      device=self.device).cpu().numpy()
+                    prediction = predictor.predict_sliding_window_return_logits(data)
                 except RuntimeError:
-                    prediction = predict_sliding_window_return_logits(self.network, data, num_seg_heads,
-                                                                      tile_size=self.configuration_manager.patch_size,
-                                                                      mirror_axes=self.inference_allowed_mirroring_axes,
-                                                                      tile_step_size=0.5,
-                                                                      use_gaussian=True,
-                                                                      precomputed_gaussian=inference_gaussian,
-                                                                      perform_everything_on_gpu=False,
-                                                                      verbose=False,
-                                                                      device=self.device).cpu().numpy()
+                    predictor.perform_everything_on_gpu = False
+                    prediction = predictor.predict_sliding_window_return_logits(data)
+                    predictor.perform_everything_on_gpu = True
 
-                if should_i_save_to_file(prediction, results, segmentation_export_pool):
-                    np.save(output_filename_truncated + '.npy', prediction)
-                    prediction_for_export = output_filename_truncated + '.npy'
-                else:
-                    prediction_for_export = prediction
+                prediction = prediction.cpu()
 
                 # this needs to go into background processes
                 results.append(
                     segmentation_export_pool.starmap_async(
-                        export_prediction_from_softmax, (
-                            (prediction_for_export, properties, self.configuration_manager, self.plans_manager,
+                        export_prediction_from_logits, (
+                            (prediction, properties, self.configuration_manager, self.plans_manager,
                              self.dataset_json, output_filename_truncated, save_probabilities),
                         )
                     )
@@ -1213,19 +1214,14 @@ class nnUNetTrainer(object):
                         output_folder = join(self.output_folder_base, 'predicted_next_stage', n)
                         output_file = join(output_folder, k + '.npz')
 
-                        if should_i_save_to_file(prediction, results, segmentation_export_pool):
-                            np.save(output_file[:-4] + '.npy', prediction)
-                            prediction_for_export = output_file[:-4] + '.npy'
-                        else:
-                            prediction_for_export = prediction
-                        # resample_and_save(prediction, target_shape, output_file, self.plans, self.configuration, properties,
-                        #                   self.dataset_json, n)
+                        # resample_and_save(prediction, target_shape, output_file, self.plans_manager, self.configuration_manager, properties,
+                        #                   self.dataset_json)
                         results.append(segmentation_export_pool.starmap_async(
                             resample_and_save, (
-                                (prediction_for_export, target_shape, output_file, self.plans_manager,
+                                (prediction, target_shape, output_file, self.plans_manager,
                                  self.configuration_manager,
                                  properties,
-                                 self.dataset_json, n),
+                                 self.dataset_json),
                             )
                         ))
 
@@ -1247,6 +1243,7 @@ class nnUNetTrainer(object):
             self.print_to_log_file("Mean Validation Dice: ", (metrics['foreground_mean']["Dice"]), also_print_to_console=True)
 
         self.set_deep_supervision_enabled(True)
+        compute_gaussian.cache_clear()
 
     def run_training(self):
         self.on_train_start()
