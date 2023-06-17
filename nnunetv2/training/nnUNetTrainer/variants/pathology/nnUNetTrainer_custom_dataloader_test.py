@@ -53,13 +53,15 @@ from time import time, sleep
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+import wandb
+
 class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
                  device: torch.device = torch.device('cuda')):
         """used for debugging plans etc"""
 ###
         self.ignore0 = True
-        self.wandb = False
+        self.wandb = True
         self.time = False
         self.albumentations_aug = True
         self.sample_double = False # this means we for example sample 1024x1024, augment, and return 512x512 center crop to remove artifacts induced by zooming and rotating, not needed if using albumentations_aug
@@ -218,7 +220,11 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             
 
 ### GET DATALOADERS - as generator objects
-    def get_dataloaders(self, temp=False):
+    def get_dataloaders(self, subset=False, sample_double=False):
+        
+        if subset:
+            print('\n\n\n\nUSING DATA SUBSET\n\n\n\n')
+        
         self.do_split()
         
         # return None, None
@@ -232,7 +238,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         iterator_template = load_json(iterator_template_path)
         split_json = load_json(join(nnUNet_preprocessed, self.plans_manager.dataset_name, 'splits.json'))
         fold_split_dict = split_json[str(self.fold)]
-        if self.time or temp:
+        if self.time or subset:
             print('Still timing everything, only copying SOME training and val files')
             fold_split_dict = {'training': fold_split_dict['training'][-10:], 'validation': fold_split_dict['validation'][-5:]}
         copy_path = '/home/user' #'C:\\Users\\joeyspronck\\Documents\\Github\\nnUNet_v2\\data\\nnUNet_wsd'
@@ -250,7 +256,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         # extra_ds_sizes = [ds_shape for ds_shape in ds_shapes[1:]]
         # extra_ds_shapes = tuple([tuple([batch_size]+ds_shape) for ds_shape in ds_shapes[1:]])
         
-        if self.sample_double or temp:
+        if self.sample_double or sample_double:
             patch_size = [size*2 for size in patch_size]
             patch_shape = patch_size + [len(self.configuration_manager.normalization_schemes)]
             ds_sizes = [[shape*2 for shape in ds_shape] for ds_shape in ds_shapes]
@@ -543,6 +549,8 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
 
         # print(f"batch size: {self.batch_size}")
         # print(f"oversample: {self.oversample_foreground_percent}")
+
+        wandb.watch(self.network)
 
 
     def on_epoch_end(self):
