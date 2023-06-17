@@ -119,5 +119,5 @@ data/
 # vscode stuff  
 *.vscode*
 
-# temporary test code 
-# test_code/
+# wandb folders
+*/wandb/*
