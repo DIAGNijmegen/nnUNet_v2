@@ -1,8 +1,12 @@
 #!/bin/bash
 
+fold=$1
+
 # Install the required library
 pip3 install albumentations==1.2.1
 pip3 install -e /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/
+
+wandb login ${WANDB_API_KEY}
 
 # Run the Python script
 echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -14,7 +18,7 @@ python3 /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/nnunetv2/experimen
 echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 echo PREPROCESSING DONE, START TRAINING
 echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-python3 /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/nnunetv2/run/run_training.py
+python3 /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/nnunetv2/run/run_training.py "$fold"
 
 echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 echo TRAINING DONE, STOP

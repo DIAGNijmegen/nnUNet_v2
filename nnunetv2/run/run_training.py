@@ -257,18 +257,22 @@ def run_training_entry():
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('fold', type=int, help="fold to train")
+    args = parser.parse_args()
     # run_training_entry()
 
     # WANDB_API_KEY = os.environ.get('WANDB_API_KEY')
     # wandb.login(key=WANDB_API_KEY)
     # print("[DONE, LOGGING IN]")
 
-    # run = wandb.init(project="my-nnunet-project")
-    # print("[DONE, INIT PROJECT]")
+    run = wandb.init(project="my-nnunet-project", entity="joeyspronck", name=f'TIGER_test_run_fold_{args.fold}')
+    print("[DONE, INIT PROJECT]")
 
     ### COMMENT run_training_entry() ABOVE
     ### AND
     ### UNCOMMENT BELOW
-    print("\n\n\n[[[RUNNING test, dataset 4, 2d model, fold 0, pathology trainer and planner]]]\n\n")
-    run_training('4', '2d', 0, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
+    print(f"\n\n\n[[[RUNNING test, dataset 4, 2d model, FOLD {args.fold}, pathology trainer and planner]]]\n\n")
+    run_training('4', '2d', args.fold, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
     # run_training('1', '2d', 0, 'nnUNetTrainer') # nnUNetTrainer_1epoch
