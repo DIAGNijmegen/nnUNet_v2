@@ -186,7 +186,35 @@ def run_training(dataset_name_or_id: Union[str, int],
 
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
+###
+        if len([item for item in os.listdir(nnunet_trainer.output_folder) if item.endswith('checkpoint_latest.pth')]) > 0:
+            continue_training = True
+###
+
         maybe_load_checkpoint(nnunet_trainer, continue_training, only_run_validation, pretrained_weights)
+
+###
+        if nnunet_trainer.wandb:
+            WANDB_API_KEY = os.environ.get('WANDB_API_KEY')
+            wandb.login(key=WANDB_API_KEY)
+            print("[DONE, LOGGING IN]")
+
+            print(nnunet_trainer.wandb_name)
+            if continue_training: 
+                run = wandb.init(project=f"nnunet_trainer.plans_manager.dataset_name", 
+                                entity="joeyspronck", 
+                                name=f'fold{args.fold}__{nnunet_trainer.wandb_name}',
+                                id=f'fold{args.fold}__{nnunet_trainer.wandb_name}',
+                                step = nnunet_trainer.current_epoch
+                                )
+            else:
+                run = wandb.init(project=f"nnunet_trainer.plans_manager.dataset_name", 
+                                entity="joeyspronck", 
+                                name=f'fold{args.fold}__{nnunet_trainer.wandb_name}',
+                                id=f'fold{args.fold}__{nnunet_trainer.wandb_name}'
+                                )
+            print("[DONE, INIT PROJECT]")
+###
 
         if torch.cuda.is_available():
             cudnn.deterministic = False
@@ -196,7 +224,7 @@ def run_training(dataset_name_or_id: Union[str, int],
             nnunet_trainer.run_training()
 
         # TODO: not implemented yet
-        nnunet_trainer.perform_actual_validation(export_validation_probabilities)
+        # nnunet_trainer.perform_actual_validation(export_validation_probabilities)
 
 
 def run_training_entry():
@@ -262,13 +290,6 @@ if __name__ == '__main__':
     parser.add_argument('fold', type=int, help="fold to train")
     args = parser.parse_args()
     # run_training_entry()
-
-    # WANDB_API_KEY = os.environ.get('WANDB_API_KEY')
-    # wandb.login(key=WANDB_API_KEY)
-    # print("[DONE, LOGGING IN]")
-
-    run = wandb.init(project="my-nnunet-project", entity="joeyspronck", name=f'TIGER_test_run_fold_{args.fold}')
-    print("[DONE, INIT PROJECT]")
 
     ### COMMENT run_training_entry() ABOVE
     ### AND

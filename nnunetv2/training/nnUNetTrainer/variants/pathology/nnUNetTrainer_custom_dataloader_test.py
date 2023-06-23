@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import torch
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
@@ -64,7 +65,14 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         self.wandb = True
         self.time = False
         self.albumentations_aug = True
+        self.aug = 'alb' if self.albumentations_aug else 'nnunet'
         self.sample_double = False # this means we for example sample 1024x1024, augment, and return 512x512 center crop to remove artifacts induced by zooming and rotating, not needed if using albumentations_aug
+        self.label_sampling_strategy = 'balanced' # 'weighted'
+        self.iterator_template = f'wsd_{self.label_sampling_strategy}_iterator_{self.aug}_aug'
+
+        if self.aug == 'nnunet':
+            print('[STOPPING] nnUNet augmentation not efficniently implemented yet!')
+            sys.exit(0)
 
 ###
         # super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
@@ -106,10 +114,14 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         # inference and some of the folders may not be defined!
         # self.preprocessed_dataset_folder_base = join(nnUNet_preprocessed, self.plans_manager.dataset_name) \
         #     if nnUNet_preprocessed is not None else None
+        
+        
         self.output_folder_base = join(nnUNet_results, self.plans_manager.dataset_name,
-                                       self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + configuration) \
+                                       self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + self.iterator_template + "__" + configuration) \
             if nnUNet_results is not None else None
         self.output_folder = join(self.output_folder_base, f'fold_{fold}')
+        if self.wandb:
+            self.wandb_name = f'test2_balanced_{self.fold}'#self.plans_manager.dataset_name + '__' + self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + self.iterator_template + "__" + configuration
 
         # self.preprocessed_dataset_folder = join(self.preprocessed_dataset_folder_base,
         #                                         self.configuration_manager.data_identifier)
@@ -184,6 +196,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
 
 ### END ORIGINAL SUPER INIT
 
+
 # Split function that randomly splits files.json into 5 folds
     def do_split(self):
         if isfile(join(nnUNet_preprocessed, self.plans_manager.dataset_name, 'splits.json')):
@@ -230,11 +243,15 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         # return None, None
         print('[Getting WSD dataloaders]')
 
-        if self.albumentations_aug:
-            iterator_template_path = join(os.path.dirname(__file__), 'wsd_iterator_alb_aug_template.json')
-        else:
-            iterator_template_path = join(os.path.dirname(__file__), 'wsd_iterator_template.json')
-        print(f'Using iterator template: {iterator_template_path}')
+        
+        iterator_template_path = join(os.path.dirname(__file__), f'{self.iterator_template}_template.json')
+        # if self.albumentations_aug:
+        #     iterator_template_path = join(os.path.dirname(__file__), 'wsd_iterator_alb_aug_template.json')
+        # else:
+        #     print('[nnUNet augmentation not efficiently implemented yet]')
+        #     1/0 # not implemented 
+        #     iterator_template_path = join(os.path.dirname(__file__), 'wsd_iterator_nnunet_aug_template.json')
+        print(f'[ITERATOR TEMPLATE] Using iterator template: {iterator_template_path}')
         iterator_template = load_json(iterator_template_path)
         split_json = load_json(join(nnUNet_preprocessed, self.plans_manager.dataset_name, 'splits.json'))
         fold_split_dict = split_json[str(self.fold)]
@@ -243,10 +260,11 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             fold_split_dict = {'training': fold_split_dict['training'][-10:], 'validation': fold_split_dict['validation'][-5:]}
         copy_path = '/home/user' #'C:\\Users\\joeyspronck\\Documents\\Github\\nnUNet_v2\\data\\nnUNet_wsd'
         labels = self.dataset_json['labels']
-        label_sample_weights = {
-            'invasive tumor': 0.5,
-            'tumor-associated stroma': 0.5
-        }
+        if self.label_sampling_strategy == 'weighted': 
+            label_sample_weights = { #these weights are bad btw
+                'invasive tumor': 0.5,
+                'tumor-associated stroma': 0.5
+            }
         spacing = 0.5
 
         patch_size = list(self.configuration_manager.patch_size)
@@ -278,7 +296,8 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         fill_template['batch_shape']['batch_size'] = batch_size
         fill_template['batch_shape']['spacing'] = spacing
         fill_template['batch_shape']['shape'] = patch_shape
-        fill_template['label_sampler']['labels'] = label_sample_weights
+        if self.label_sampling_strategy == 'weighted':  
+            fill_template['label_sampler']['labels'] = label_sample_weights
         if not self.albumentations_aug:
             fill_template['batch_callbacks'][0]['patch_size_spatial'] = patch_size
         fill_template['batch_callbacks'][-1]['sizes'] = extra_ds_sizes
