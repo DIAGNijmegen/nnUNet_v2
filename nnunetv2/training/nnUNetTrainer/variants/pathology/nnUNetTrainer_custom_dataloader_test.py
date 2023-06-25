@@ -121,7 +121,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             if nnUNet_results is not None else None
         self.output_folder = join(self.output_folder_base, f'fold_{fold}')
         if self.wandb:
-            self.wandb_name = f'test2_balanced_{self.fold}'#self.plans_manager.dataset_name + '__' + self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + self.iterator_template + "__" + configuration
+            self.wandb_name = f'fold{self.fold}' + '__' + self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + self.iterator_template + "__" + configuration
 
         # self.preprocessed_dataset_folder = join(self.preprocessed_dataset_folder_base,
         #                                         self.configuration_manager.data_identifier)
@@ -177,7 +177,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         # self.configure_rotation_dummyDA_mirroring_and_inital_patch_size and will be saved in checkpoints
 
         ### checkpoint saving stuff
-        self.save_every = 50
+        self.save_every = 1
         self.disable_checkpointing = False
 
         ## DDP batch size and oversampling can differ between workers and needs adaptation
@@ -571,7 +571,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
 
         wandb.watch(self.network)
 
-
+### wandb logging ###
     def on_epoch_end(self):
         self.logger.log('epoch_end_timestamps', time(), self.current_epoch)
 
@@ -597,9 +597,28 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         if self.local_rank == 0:
             self.logger.plot_progress_png(self.output_folder)
         if self.wandb:
-            print('here I log metrics')
-            self.logger.wandb_log()
+            self.logger.wandb_log(self.current_epoch)
         self.current_epoch += 1
+
+### change dataloader stopping ###
+    def on_train_end(self):
+        self.save_checkpoint(join(self.output_folder, "checkpoint_final.pth"))
+        # now we can delete latest
+        if self.local_rank == 0 and isfile(join(self.output_folder, "checkpoint_latest.pth")):
+            os.remove(join(self.output_folder, "checkpoint_latest.pth"))
+
+        # shut down dataloaders
+        old_stdout = sys.stdout
+        with open(os.devnull, 'w') as f: # No idea whether this makes sense?
+            sys.stdout = f
+            if self.dataloader_train is not None:
+                self.dataloader_train.stop()
+            if self.dataloader_val is not None:
+                self.dataloader_val.stop()
+            sys.stdout = old_stdout
+
+        empty_cache(self.device)
+        self.print_to_log_file("Training done.")
 
 ### RUN TRAINING        
     def run_training(self):
