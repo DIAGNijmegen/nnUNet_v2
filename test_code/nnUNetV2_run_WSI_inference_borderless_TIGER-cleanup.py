@@ -13,6 +13,8 @@
 # In this file we will also auto-configure the config and files yamls ;)
 #################################################################
 
+print('NEEDS LATEST WSD!')
+
 #################################################################
 ### Imports
 #################################################################
@@ -265,7 +267,8 @@ def get_closest_spacing(spacing_value):
 #################################################################
 ### LOAD MODEL, change your model here
 #################################################################
-trainer_results_folder = '/data/pathology/projects/pathology-lung-TIL/nnUNet_v2/data/nnUNet_results/Dataset004_TIGER_split/nnUNetTrainer_custom_dataloader_test__nnUNetWholeSlideDataPlans__2d'
+
+trainer_results_folder = '/data/pathology/projects/pathology-lung-TIL/nnUNet_v2/data/nnUNet_results/Dataset004_TIGER_split/nnUNetTrainer_custom_dataloader_test__nnUNetWholeSlideDataPlans__wsd_roi_iterator_nnunet_aug__2d'
 plans_dict = load_json(os.path.join(trainer_results_folder, 'plans.json'))
 dataset_dict = load_json(os.path.join(trainer_results_folder, 'dataset.json'))
 
@@ -300,7 +303,7 @@ norm = norm_01 #z_norm if (('score' in trainer_name) or ('default' in trainer_na
 #################################################################
 # check output folder name well, this is where we will store the WSI inference files
 # output_folder = Path('/data/pathology/projects/pathology-lung-TIL/nnUNet_raw_data_base/inference_results/Task024_TIGER_WSI')
-output_folder = Path('/data/pathology/projects/pathology-lung-TIL/nnUNet_raw_data_base/inference_results/V2_Task004_TIGER_test')
+output_folder = Path('/data/pathology/projects/pathology-lung-TIL/nnUNet_raw_data_base/inference_results/V2_Task004_TIGER_test_roi_nnunet_aug')
 # output_folder = Path('/data/pathology/projects/pathology-lung-TIL/nnUNet_raw_data_base/inference_results/Task024_TIGER_WSI/ignore0')
 
 # f"/data/pathology/projects/pathology-lung-TIL/nnUNet_raw_data_base/inference_results/{task_name}/WSI_inference/{trainer_name}/{dataset_name}_borderless")
@@ -391,7 +394,7 @@ wsm_writer = None
 # wsu_writer = None
 
 
-rerun_unfinished = True # this will check if the '<stem>_runtime.txt file is present in the outputfolder. If it is not it means that this file is not processed fully. IMPORTANT: set this to false if you want to run multiple jobs in a parralel way.'
+rerun_unfinished = False # this will check if the '<stem>_runtime.txt file is present in the outputfolder. If it is not it means that this file is not processed fully. IMPORTANT: set this to false if you want to run multiple jobs in a parralel way.'
 
 #################################################################
 ### RUN
