@@ -7,7 +7,8 @@
             "annotation_parser": {
                 "sorters": [
                     "${$wholeslidedata.annotation.selector.sort_by_area_with_roi}"
-                ]
+                ],
+                "sample_label_names": ["roi"]
             },
             "batch_shape": {
                 "batch_size": "",
@@ -18,16 +19,21 @@
                 "copy_path": "/home/user/data",
                 "spacing": 0.5
             },
-            "label_sampler_name": "WeightedLabelSampler",
-            "label_sampler": {
-                "labels": ""
-            },
+            "label_sampler_name": "BalancedLabelSampler",
+
             "annotation_sampler_name": "AreaAnnotationSampler",
             "annotation_sampler": {
                 "dataset": "${dataset}",
                 "weight": 0.5
             },
             "batch_callbacks": [
+                {
+                    "*object": "wholeslidedata.samplers.callbacks.HedAugmentationBatchCallback",
+                        "hem": 0.05, 
+                        "eos": 0.05, 
+                        "dab": 0.05, 
+                        "probability": 1
+                    },
                 {
                     "*object": "nnunetv2.training.nnUNetTrainer.variants.pathology.wsd_pathology_DA_callback.nnUnetBatchCallback",
                         "patch_size_spatial": []},

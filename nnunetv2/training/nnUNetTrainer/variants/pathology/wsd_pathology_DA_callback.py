@@ -45,11 +45,11 @@ class nnUnetBatchCallback(BatchCallback):
             independent_scale_for_each_axis=False  # todo experiment with this
         ))
 
-        ####
-        if True: #do_hed:
-            tr_transforms.append(HedTransform(factor=0.05))
-        # if True: #do_hsv:
-        #     tr_transforms.append(HsvTransform(h_lim=0.10, s_lim=0.10, v_lim=0.10))
+        #### HED IS DONE VIA THE WSD CALLBACK (SEE TEMPLATES)
+        # if True: #do_hed:
+        #     tr_transforms.append(HedTransform(factor=0.05))
+        ## if True: #do_hsv:
+        ##     tr_transforms.append(HsvTransform(h_lim=0.10, s_lim=0.10, v_lim=0.10))
         ####
         
         tr_transforms.append(GaussianNoiseTransform(p_per_sample=0.1))
@@ -79,20 +79,27 @@ class nnUnetBatchCallback(BatchCallback):
         
         self._transforms = Compose(tr_transforms)
     
-    def __call__(self, x_batch, y_batch):
+    def __call__(self, x_batch, y_batch): # lists of len batch size, every item x: (512, 512, 3) y :(512, 512)
         # format to nnUNet
-        x_batch = np.stack([x/255  for x in x_batch]).transpose((0, 3, 1, 2)).astype('float32')
+        x_batch = np.stack(x_batch).transpose((0, 3, 1, 2)).astype('float32') / 255
         y_batch = np.expand_dims(np.stack(y_batch).astype('int8'), 1)
         
         # transform
-        start_time = time.time()
+        # start_time = time.time()
         batch = self._transforms(**{'data': x_batch, 'seg': y_batch})
-        line_time = time.time() - start_time
-        print("Time taken for AUG (callback, multi thread):\t\t\t\t\t\t\t", line_time)
+        # batch = {'data': x_batch, 'target': y_batch}
+        # line_time = time.time() - start_time
+        # print("Time taken for AUG (callback, multi thread):\t\t\t\t\t\t\t", line_time)
         
-        # format back to wsd
+        # Format back to wsd
         x_batch, y_batch = batch['data'], batch['target']
-        x_batch = np.multiply(x_batch, 255).astype(np.uint8)
-        return x_batch.transpose((0, 2, 3, 1)), y_batch.squeeze()
+        np.multiply(x_batch, 255, out=x_batch, casting='unsafe')  # in-place operation, unsafe doesnt matter becasue we make it uint8 anyway
+        x_batch = x_batch.astype(np.uint8).transpose((0, 2, 3, 1))
+        y_batch = y_batch.squeeze()        
+        return x_batch, y_batch
+    
+        # or comment out all above and skip the transform
+        # print('not running nnunet callback')
+        # return x_batch, y_batch
     
 

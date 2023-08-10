@@ -64,15 +64,11 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         self.ignore0 = True
         self.wandb = True
         self.time = False
-        self.albumentations_aug = True
+        self.albumentations_aug = False
         self.aug = 'alb' if self.albumentations_aug else 'nnunet'
         self.sample_double = False # this means we for example sample 1024x1024, augment, and return 512x512 center crop to remove artifacts induced by zooming and rotating, not needed if using albumentations_aug
-        self.label_sampling_strategy = 'balanced' # 'weighted'
+        self.label_sampling_strategy = 'roi' # 'balanced' # 'weighted'
         self.iterator_template = f'wsd_{self.label_sampling_strategy}_iterator_{self.aug}_aug'
-
-        if self.aug == 'nnunet':
-            print('[STOPPING] nnUNet augmentation not efficniently implemented yet!')
-            sys.exit(0)
 
 ###
         # super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
@@ -233,7 +229,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             
 
 ### GET DATALOADERS - as generator objects
-    def get_dataloaders(self, subset=False, sample_double=False):
+    def get_dataloaders(self, subset=False, sample_double=False, cpus=14):
         
         if subset:
             print('\n\n\n\nUSING DATA SUBSET\n\n\n\n')
@@ -290,7 +286,12 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         
         device = self.device
 
+        
+        seed = int(str(time())[-3:])
+        print(f'Taking random seed {seed} for iterators')
+
         fill_template = iterator_template['wholeslidedata']['default']
+        fill_template['seed']=seed
         fill_template['yaml_source'] = fold_split_dict
         fill_template['labels'] = labels
         fill_template['batch_shape']['batch_size'] = batch_size
@@ -298,14 +299,16 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         fill_template['batch_shape']['shape'] = patch_shape
         if self.label_sampling_strategy == 'weighted':  
             fill_template['label_sampler']['labels'] = label_sample_weights
-        if not self.albumentations_aug:
-            fill_template['batch_callbacks'][0]['patch_size_spatial'] = patch_size
+        if self.aug == 'nnunet':
+            nnunet_callback_idx = [fill_template['batch_callbacks'][i]['*object'].split('.')[-1] for i in range(len(fill_template['batch_callbacks']))].index('nnUnetBatchCallback')
+            fill_template['batch_callbacks'][nnunet_callback_idx]['patch_size_spatial'] = patch_size
         fill_template['batch_callbacks'][-1]['sizes'] = extra_ds_sizes
         fill_template['dataset']['copy_path'] = copy_path
 
         self.train_config = iterator_template
         self.val_config = deepcopy(iterator_template)
-        del self.val_config['wholeslidedata']['default']['batch_callbacks'][0] # remove data augmentation for validation
+        
+        self.val_config['wholeslidedata']['default']['batch_callbacks'] = self.val_config['wholeslidedata']['default']['batch_callbacks'][-1:] # remove data augmentation for validation
 
         def half_crop(data):
             cropx = (data.shape[1] - data.shape[1]//2) // 2
@@ -400,7 +403,8 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             iterator_class = WholeSlidePlainnnUnetHalfCropBatchIterator if self.sample_double else WholeSlidePlainnnUnetBatchIterator
 
         # TODO: multiprocessing num cpus -2    
-        cpus = 14
+        # cpus = 12 
+        print('cpus used for iterators = ', cpus)
         print('[Creating batch iterators]')
         print('\t[Creating TRAIN batch iterator]')
         tiger_train_batch_iterator = create_batch_iterator(mode="training",
@@ -410,9 +414,8 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
                                         extras_shapes = extra_ds_shapes,
                                         iterator_class=iterator_class)
 
-        # sleep = 30
-        # print(f"\t...Sleep {sleep}s...")
-        # time.sleep(sleep)
+
+
         print('\t[Creating VAL batch iterator]')
         tiger_val_batch_iterator = create_batch_iterator(mode="validation",
                                 user_config= deepcopy(self.val_config),

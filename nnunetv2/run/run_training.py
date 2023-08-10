@@ -203,15 +203,15 @@ def run_training(dataset_name_or_id: Union[str, int],
             if continue_training: 
                 run = wandb.init(project=f"{nnunet_trainer.plans_manager.dataset_name}", 
                                 entity="joeyspronck", 
-                                name=f'fold{args.fold}__{nnunet_trainer.wandb_name}',
-                                id=f'fold{args.fold}__{nnunet_trainer.wandb_name}', 
+                                name=f'{nnunet_trainer.wandb_name}',
+                                id=f'{nnunet_trainer.wandb_name}', 
                                 resume=True
                                 )
             else:
                 run = wandb.init(project=f"{nnunet_trainer.plans_manager.dataset_name}", 
                                 entity="joeyspronck", 
-                                name=f'fold{args.fold}__{nnunet_trainer.wandb_name}',
-                                id=f'fold{args.fold}__{nnunet_trainer.wandb_name}'
+                                name=f'{nnunet_trainer.wandb_name}',
+                                id=f'{nnunet_trainer.wandb_name}'
                                 )
             print("[DONE, INIT PROJECT]")
 ###
@@ -297,3 +297,8 @@ if __name__ == '__main__':
     print(f"\n\n\n[[[RUNNING test, dataset 4, 2d model, FOLD {args.fold}, pathology trainer and planner]]]\n\n")
     run_training('4', '2d', args.fold, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
     # run_training('1', '2d', 0, 'nnUNetTrainer') # nnUNetTrainer_1epoch
+
+
+
+    # print(f"\n\n\n[[[RUNNING test, dataset 4, 2d model, FOLD {0}, pathology trainer and planner]]]\n\n")
+    # run_training('4', '2d', 0, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
