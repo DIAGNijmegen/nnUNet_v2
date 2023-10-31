@@ -6,7 +6,7 @@ all the way to ensembling. After running nnU-Net, the trained model(s) can be ap
 ### Dataset Format
 nnU-Net expects datasets in a structured format. This format is inspired by the data structure of
 the [Medical Segmentation Decthlon](http://medicaldecathlon.com/). Please read
-[this](documentation/dataset_format.md) for information on how to set up datasets to be compatible with nnU-Net.
+[this](dataset_format.md) for information on how to set up datasets to be compatible with nnU-Net.
 
 **Since version 2 we support multiple image file formats (.nii.gz, .png, .tif, ...)! Read the dataset_format 
 documentation to learn more!**
@@ -54,9 +54,9 @@ for prediction) to boost performance.
 You can influence the splits nnU-Net uses for 5-fold cross-validation (see [here](manual_data_splits.md)). If you 
 prefer to train a single model on all training cases, this is also possible (see below).
 
-Note that not all U-Net configurations are created for all datasets. In datasets with small image sizes, the U-Net
+**Note that not all U-Net configurations are created for all datasets. In datasets with small image sizes, the U-Net
 cascade (and with it the 3d_lowres configuration) is omitted because the patch size of the full resolution U-Net 
-already covers a large part of the input images.
+already covers a large part of the input images.**
 
 Training models is done with the `nnUNetv2_train` command. The general structure of the command is:
 ```bash
@@ -189,7 +189,7 @@ wait
 **Important: The first time a training is run nnU-Net will extract the preprocessed data into uncompressed numpy 
 arrays for speed reasons! This operation must be completed before starting more than one training of the same 
 configuration! Wait with starting subsequent folds until the first training is using the GPU! Depending on the 
-dataset size and your System this should oly take a couple of minutes at most.**
+dataset size and your System this should only take a couple of minutes at most.**
 
 If you insist on running DDP multi-GPU training, we got you covered:
 

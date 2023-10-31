@@ -73,7 +73,7 @@ install the latest version with support for your hardware (cuda, mps, cpu).
 To install hiddenlayer,
    run the following command:
     ```bash
-    pip install --upgrade git+https://github.com/julien-blanchon/hiddenlayer.git
+    pip install --upgrade git+https://github.com/FabianIsensee/hiddenlayer.git
     ```
 
 Installing nnU-Net will add several new commands to your terminal. These commands are used to run the entire nnU-Net
@@ -82,6 +82,6 @@ easy identification.
 
 Note that these commands simply execute python scripts. If you installed nnU-Net in a virtual environment, this
 environment must be activated when executing the commands. You can see what scripts/functions are executed by 
-checking the entry_points in the setup.py file.
+checking the project.scripts in the [pyproject.toml](../pyproject.toml) file.
 
 All nnU-Net commands have a `-h` option which gives information on how to use them.

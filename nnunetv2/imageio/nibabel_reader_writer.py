@@ -41,18 +41,15 @@ class NibabelIO(BaseReaderWriter):
         spacings_for_nnunet = []
         for f in image_fnames:
             nib_image = nibabel.load(f)
-            assert len(nib_image.shape) == 3, 'only 3d images are supported by NibabelIO'
+            assert nib_image.ndim == 3, 'only 3d images are supported by NibabelIO'
             original_affine = nib_image.affine
 
             original_affines.append(original_affine)
 
             # spacing is taken in reverse order to be consistent with SimpleITK axis ordering (confusing, I know...)
-            spacings_for_nnunet.append((
-                original_affine[2, 2],
-                original_affine[1, 1],
-                original_affine[0, 0],
-            ))
-            spacings_for_nnunet[-1] = list(np.abs(spacings_for_nnunet[-1]))
+            spacings_for_nnunet.append(
+                    [float(i) for i in nib_image.header.get_zooms()[::-1]]
+            )
 
             # transpose image to be consistent with the way SimpleITk reads images. Yeah. Annoying.
             images.append(nib_image.get_fdata().transpose((2, 1, 0))[None])
@@ -123,7 +120,7 @@ class NibabelIOWithReorient(BaseReaderWriter):
         spacings_for_nnunet = []
         for f in image_fnames:
             nib_image = nibabel.load(f)
-            assert len(nib_image.shape) == 3, 'only 3d images are supported by NibabelIO'
+            assert nib_image.ndim == 3, 'only 3d images are supported by NibabelIO'
             original_affine = nib_image.affine
             reoriented_image = nib_image.as_reoriented(io_orientation(original_affine))
             reoriented_affine = reoriented_image.affine
@@ -132,12 +129,9 @@ class NibabelIOWithReorient(BaseReaderWriter):
             reoriented_affines.append(reoriented_affine)
 
             # spacing is taken in reverse order to be consistent with SimpleITK axis ordering (confusing, I know...)
-            spacings_for_nnunet.append((
-                reoriented_affine[2, 2],
-                reoriented_affine[1, 1],
-                reoriented_affine[0, 0],
-            ))
-            spacings_for_nnunet[-1] = list(np.abs(spacings_for_nnunet[-1]))
+            spacings_for_nnunet.append(
+                    [float(i) for i in reoriented_image.header.get_zooms()[::-1]]
+            )
 
             # transpose image to be consistent with the way SimpleITk reads images. Yeah. Annoying.
             images.append(reoriented_image.get_fdata().transpose((2, 1, 0))[None])
@@ -185,7 +179,7 @@ class NibabelIOWithReorient(BaseReaderWriter):
 
         seg_nib = nibabel.Nifti1Image(seg, affine=properties['nibabel_stuff']['reoriented_affine'])
         seg_nib_reoriented = seg_nib.as_reoriented(io_orientation(properties['nibabel_stuff']['original_affine']))
-        assert np.all(np.isclose(properties['nibabel_stuff']['original_affine'], seg_nib_reoriented.affine)), \
+        assert np.allclose(properties['nibabel_stuff']['original_affine'], seg_nib_reoriented.affine), \
             'restored affine does not match original affine'
         nibabel.save(seg_nib_reoriented, output_fname)
 
