@@ -1,26 +1,41 @@
 #!/bin/bash
 
-fold=$1
+dataset=$1
+fold=$2
+trainer=$3
 
 # Install the required library
-pip3 install albumentations==1.2.1
-pip3 install -e /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/
+pip3 install -e .
+git config --global --add safe.directory .
 
-wandb login ${WANDB_API_KEY}
+export WANDB_API_KEY=yourapikeyhere
+
+# setting these paths here, feel free to comment out and specigy them somewhere else
+export nnUNet_raw="/your/folder/here/nnUNet_raw"
+export nnUNet_preprocessed="/your/folder/here/nnUNet_preprocessed"
+export nnUNet_results="/your/folder/here/nnUNet_results"
+
+# Check if WANDB_API_KEY is defined
+if [ -n "${WANDB_API_KEY}" ]; then
+    echo "USING WANDB API KEY"
+    wandb login ${WANDB_API_KEY}
+else
+    echo "WANDB_API_KEY is not defined. WandB login skipped."
+fi
 
 # Run the Python script
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+echo ---------------------------------
 echo INSTALLS DONE, START PREPROCESSING
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-python3 /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/nnunetv2/experiment_planning/experiment_planners/pathology_experiment_planner.py
+echo ---------------------------------
+python3 ./nnunetv2/experiment_planning/experiment_planners/pathology_experiment_planner.py "$dataset"
 
 
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+echo ---------------------------------
 echo PREPROCESSING DONE, START TRAINING
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-python3 /data/pathology/projects/pathology-lung-TIL/nnUNet_v2/nnunetv2/run/run_training.py "$fold"
+echo ---------------------------------
+python3 ./nnunetv2/run/run_training.py "$dataset" "$fold" "$trainer"
 
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-echo TRAINING DONE, STOP
-echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+echo ---------------------------------
+echo TRAINING DONE
+echo ---------------------------------
 echo TOTALLY DONE

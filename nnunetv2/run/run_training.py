@@ -1,7 +1,7 @@
 import os
 import socket
 from typing import Union, Optional
-
+import argparse
 import nnunetv2
 import torch.cuda
 import torch.distributed as dist
@@ -76,7 +76,7 @@ def maybe_load_checkpoint(nnunet_trainer: nnUNetTrainer, continue_training: bool
         expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_final.pth')
         if not isfile(expected_checkpoint_file):
             expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_latest.pth')
-        # special case where --c is used to run a previously aborted validation
+        # special case where --c is used to run a previously aborted validation (from original nnunet, not sure how this happens)
         if not isfile(expected_checkpoint_file):
             expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_best.pth')
         if not isfile(expected_checkpoint_file):
@@ -95,7 +95,14 @@ def maybe_load_checkpoint(nnunet_trainer: nnUNetTrainer, continue_training: bool
         expected_checkpoint_file = None
 
     if expected_checkpoint_file is not None:
-        nnunet_trainer.load_checkpoint(expected_checkpoint_file)
+        print('[Continue training] using:', expected_checkpoint_file)
+        try:
+            nnunet_trainer.load_checkpoint(expected_checkpoint_file)
+        except:
+            print('[FAILED] trying alternative file')
+            expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_best.pth')
+            print('[Continue training] using:', expected_checkpoint_file)
+
 
 
 def setup_ddp(rank, world_size):
@@ -227,78 +234,72 @@ def run_training(dataset_name_or_id: Union[str, int],
         # nnunet_trainer.perform_actual_validation(export_validation_probabilities)
 
 
-def run_training_entry():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dataset_name_or_id', type=str,
-                        help="Dataset name or ID to train with")
-    parser.add_argument('configuration', type=str,
-                        help="Configuration that should be trained")
-    parser.add_argument('fold', type=str,
-                        help='Fold of the 5-fold cross-validation. Should be an int between 0 and 4.')
-    parser.add_argument('-tr', type=str, required=False, default='nnUNetTrainer',
-                        help='[OPTIONAL] Use this flag to specify a custom trainer. Default: nnUNetTrainer')
-    parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',
-                        help='[OPTIONAL] Use this flag to specify a custom plans identifier. Default: nnUNetPlans')
-    parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
-                        help='[OPTIONAL] path to nnU-Net checkpoint file to be used as pretrained model. Will only '
-                             'be used when actually training. Beta. Use with caution.')
-    parser.add_argument('-num_gpus', type=int, default=1, required=False,
-                        help='Specify the number of GPUs to use for training')
-    parser.add_argument("--use_compressed", default=False, action="store_true", required=False,
-                        help="[OPTIONAL] If you set this flag the training cases will not be decompressed. Reading compressed "
-                             "data is much more CPU and (potentially) RAM intensive and should only be used if you "
-                             "know what you are doing")
-    parser.add_argument('--npz', action='store_true', required=False,
-                        help='[OPTIONAL] Save softmax predictions from final validation as npz files (in addition to predicted '
-                             'segmentations). Needed for finding the best ensemble.')
-    parser.add_argument('--c', action='store_true', required=False,
-                        help='[OPTIONAL] Continue training from latest checkpoint')
-    parser.add_argument('--val', action='store_true', required=False,
-                        help='[OPTIONAL] Set this flag to only run the validation. Requires training to have finished.')
-    parser.add_argument('--disable_checkpointing', action='store_true', required=False,
-                        help='[OPTIONAL] Set this flag to disable checkpointing. Ideal for testing things out and '
-                             'you dont want to flood your hard drive with checkpoints.')
-    parser.add_argument('-device', type=str, default='cuda', required=False,
-                    help="Use this to set the device the training should run with. Available options are 'cuda' "
-                         "(GPU), 'cpu' (CPU) and 'mps' (Apple M1/M2). Do NOT use this to set which GPU ID! "
-                         "Use CUDA_VISIBLE_DEVICES=X nnUNetv2_train [...] instead!")
-    args = parser.parse_args()
+# def run_training_entry():
+#     import argparse
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('dataset_name_or_id', type=str,
+#                         help="Dataset name or ID to train with")
+#     parser.add_argument('configuration', type=str,
+#                         help="Configuration that should be trained")
+#     parser.add_argument('fold', type=str,
+#                         help='Fold of the 5-fold cross-validation. Should be an int between 0 and 4.')
+#     parser.add_argument('-tr', type=str, required=False, default='nnUNetTrainer',
+#                         help='[OPTIONAL] Use this flag to specify a custom trainer. Default: nnUNetTrainer')
+#     parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',
+#                         help='[OPTIONAL] Use this flag to specify a custom plans identifier. Default: nnUNetPlans')
+#     parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
+#                         help='[OPTIONAL] path to nnU-Net checkpoint file to be used as pretrained model. Will only '
+#                              'be used when actually training. Beta. Use with caution.')
+#     parser.add_argument('-num_gpus', type=int, default=1, required=False,
+#                         help='Specify the number of GPUs to use for training')
+#     parser.add_argument("--use_compressed", default=False, action="store_true", required=False,
+#                         help="[OPTIONAL] If you set this flag the training cases will not be decompressed. Reading compressed "
+#                              "data is much more CPU and (potentially) RAM intensive and should only be used if you "
+#                              "know what you are doing")
+#     parser.add_argument('--npz', action='store_true', required=False,
+#                         help='[OPTIONAL] Save softmax predictions from final validation as npz files (in addition to predicted '
+#                              'segmentations). Needed for finding the best ensemble.')
+#     parser.add_argument('--c', action='store_true', required=False,
+#                         help='[OPTIONAL] Continue training from latest checkpoint')
+#     parser.add_argument('--val', action='store_true', required=False,
+#                         help='[OPTIONAL] Set this flag to only run the validation. Requires training to have finished.')
+#     parser.add_argument('--disable_checkpointing', action='store_true', required=False,
+#                         help='[OPTIONAL] Set this flag to disable checkpointing. Ideal for testing things out and '
+#                              'you dont want to flood your hard drive with checkpoints.')
+#     parser.add_argument('-device', type=str, default='cuda', required=False,
+#                     help="Use this to set the device the training should run with. Available options are 'cuda' "
+#                          "(GPU), 'cpu' (CPU) and 'mps' (Apple M1/M2). Do NOT use this to set which GPU ID! "
+#                          "Use CUDA_VISIBLE_DEVICES=X nnUNetv2_train [...] instead!")
+#     args = parser.parse_args()
 
-    assert args.device in ['cpu', 'cuda', 'mps'], f'-device must be either cpu, mps or cuda. Other devices are not tested/supported. Got: {args.device}.'
-    if args.device == 'cpu':
-        # let's allow torch to use hella threads
-        import multiprocessing
-        torch.set_num_threads(multiprocessing.cpu_count())
-        device = torch.device('cpu')
-    elif args.device == 'cuda':
-        # multithreading in torch doesn't help nnU-Net if run on GPU
-        torch.set_num_threads(1)
-        torch.set_num_interop_threads(1)
-        device = torch.device('cuda')
-    else:
-        device = torch.device('mps')
+#     assert args.device in ['cpu', 'cuda', 'mps'], f'-device must be either cpu, mps or cuda. Other devices are not tested/supported. Got: {args.device}.'
+#     if args.device == 'cpu':
+#         # let's allow torch to use hella threads
+#         import multiprocessing
+#         torch.set_num_threads(multiprocessing.cpu_count())
+#         device = torch.device('cpu')
+#     elif args.device == 'cuda':
+#         # multithreading in torch doesn't help nnU-Net if run on GPU
+#         torch.set_num_threads(1)
+#         torch.set_num_interop_threads(1)
+#         device = torch.device('cuda')
+#     else:
+#         device = torch.device('mps')
 
-    run_training(args.dataset_name_or_id, args.configuration, args.fold, args.tr, args.p, args.pretrained_weights,
-                 args.num_gpus, args.use_compressed, args.npz, args.c, args.val, args.disable_checkpointing,
-                 device=device)
+#     run_training(args.dataset_name_or_id, args.configuration, args.fold, args.tr, args.p, args.pretrained_weights,
+#                  args.num_gpus, args.use_compressed, args.npz, args.c, args.val, args.disable_checkpointing,
+#                  device=device)
 
 
 if __name__ == '__main__':
-    import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument('dataset_name_or_id', type=str,
+                        help="Dataset name or ID to train with")
     parser.add_argument('fold', type=int, help="fold to train")
+    parser.add_argument('trainer', type=str, help="Trainer name, check nnunetv2/training/nnUNetTrainer/variants/pathology for trainers")
+    parser.add_argument('--planner', type=str, default='nnUNetWholeSlideDataPlans',
+                    help="Planner name (default: nnUNetWholeSlideDataPlans)")
     args = parser.parse_args()
-    # run_training_entry()
 
-    ### COMMENT run_training_entry() ABOVE
-    ### AND
-    ### UNCOMMENT BELOW
-    print(f"\n\n\n[[[RUNNING test, dataset 4, 2d model, FOLD {args.fold}, pathology trainer and planner]]]\n\n")
-    run_training('4', '2d', args.fold, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
-    # run_training('1', '2d', 0, 'nnUNetTrainer') # nnUNetTrainer_1epoch
-
-
-
-    # print(f"\n\n\n[[[RUNNING test, dataset 4, 2d model, FOLD {0}, pathology trainer and planner]]]\n\n")
-    # run_training('4', '2d', 0, 'nnUNetTrainer_custom_dataloader_test', 'nnUNetWholeSlideDataPlans')
+    print(f"[RUNNING TRAINING] dataset {args.dataset_name_or_id}, 2d model, FOLD {args.fold}, pathology trainer and planner")
+    run_training(args.dataset_name_or_id, '2d', args.fold, args.trainer, args.planner)
