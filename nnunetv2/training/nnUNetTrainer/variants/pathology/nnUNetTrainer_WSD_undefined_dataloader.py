@@ -56,23 +56,21 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import wandb
 
-class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
+class nnUNetTrainer_WSD_undefined_dataloader(nnUNetTrainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
                  device: torch.device = torch.device('cuda')):
         """used for debugging plans etc"""
 ###
         # SET THESE
-        self.ignore0 = True
-        self.time = True
-        self.albumentations_aug = False
-        self.label_sampling_strategy = 'balanced' #'roi' #'roi' # 'balanced' # 'weighted' 
-        self.sample_double = False # this means we for example sample 1024x1024, augment, and return 512x512 center crop to remove artifacts induced by zooming and rotating, not needed if using albumentations_aug
+        self.ignore0 = None
+        self.time = None
+        self.albumentations_aug = None
+        self.label_sampling_strategy = None #'roi' # 'balanced' # 'weighted' 
+        self.sample_double = None # this means we for example sample 1024x1024, augment, and return 512x512 center crop to remove artifacts induced by zooming and rotating, not needed if using albumentations_aug
+        self.cpus = None
 
         # AUTO
         self.wandb = True if 'WANDB_API_KEY' in os.environ else False
-        print('\n\n\n\nTEMP WANDB OFF')
-        self.wandb = False
-
         self.aug = 'alb' if self.albumentations_aug else 'nnunet'
         self.iterator_template = f'wsd_{self.label_sampling_strategy}_iterator_{self.aug}_aug'
 ###
@@ -122,7 +120,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             if nnUNet_results is not None else None
         self.output_folder = join(self.output_folder_base, f'fold_{fold}')
         if self.wandb:
-            self.wandb_name = f'fold{self.fold}' + '__' + self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + self.iterator_template + "__" + configuration
+            self.wandb_name = f'fold{self.fold}' + '__' + self.__class__.__name__ + '__' + self.plans_manager.plans_name
 
         # self.preprocessed_dataset_folder = join(self.preprocessed_dataset_folder_base,
         #                                         self.configuration_manager.data_identifier)
@@ -234,7 +232,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
             
 
 ### GET DATALOADERS - as generator objects
-    def get_dataloaders(self, subset=False, sample_double=False, cpus=14):
+    def get_dataloaders(self, subset=False, sample_double=False, cpus=10):
         
         if subset:
             print('\n\n\n\nUSING DATA SUBSET\n\n\n\n')
@@ -268,10 +266,10 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         spacing = 0.5
 
         patch_size = list(self.configuration_manager.patch_size)
-        batch_size = self.configuration_manager.batch_size
-        print('\n\n\nTEMP BATCH SIZE 8')
-        batch_size = 8
 
+        print('\n\n\nTEMP BATCH SIZE 8\n\n\n')
+        # batch_size = self.configuration_manager.batch_size
+        batch_size = 8
 
         ds_scales = self._get_deep_supervision_scales()
         ds_shapes = [[int(np.round(i * j)) for i, j in zip(patch_size, k)] for k in ds_scales]
@@ -414,18 +412,7 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
         # cpus = 12 
         print('cpus used for iterators = ', cpus)
         print('[Creating batch iterators]')
-
-        print('\t[Creating VAL batch iterator]')
-        print(self.val_config)
-        tiger_val_batch_iterator = create_batch_iterator(mode="validation",
-                                user_config= deepcopy(self.val_config),
-                                cpus=cpus,
-                                buffer_dtype='uint8',
-                                extras_shapes = extra_ds_shapes,
-                                iterator_class=iterator_class)
-
         print('\t[Creating TRAIN batch iterator]')
-        print(self.train_config)
         tiger_train_batch_iterator = create_batch_iterator(mode="training",
                                         user_config= deepcopy(self.train_config),
                                         cpus=cpus,
@@ -433,9 +420,13 @@ class nnUNetTrainer_custom_dataloader_test(nnUNetTrainer):
                                         extras_shapes = extra_ds_shapes,
                                         iterator_class=iterator_class)
 
-
-
-
+        print('\t[Creating VAL batch iterator]')
+        tiger_val_batch_iterator = create_batch_iterator(mode="validation",
+                                user_config= deepcopy(self.val_config),
+                                cpus=cpus,
+                                buffer_dtype='uint8',
+                                extras_shapes = extra_ds_shapes,
+                                iterator_class=iterator_class)
 
 
         print('[Returning batch iterators]')
