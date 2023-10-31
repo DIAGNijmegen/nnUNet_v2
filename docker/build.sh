@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="v0.01"
+VERSION="v0.02"
 
 docker build -t doduo1.umcn.nl/nnunet_for_pathology:$VERSION . && \
 docker push doduo1.umcn.nl/nnunet_for_pathology:$VERSION && \
