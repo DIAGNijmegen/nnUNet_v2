@@ -1,3 +1,7 @@
+import argparse
+import sys
+import time
+import os
 import shutil
 import sys
 from copy import deepcopy
@@ -78,6 +82,10 @@ class PathologyExperimentPlanner(object):
             'if overwrite_target_spacing is used then three floats must be given (as list or tuple)'
 
         self.plans = None
+
+        # used to check if it should be run again or not
+        self.plans_path = join(nnUNet_preprocessed, self.dataset_name, self.plans_identifier + '.json')
+        self.planning_lock_path = join(nnUNet_preprocessed, self.dataset_name, 'planning.lock')
 
     # def determine_reader_writer(self):
         # training_identifiers = get_identifiers_from_splitted_dataset_folder(join(self.raw_dataset_folder, 'imagesTr'),
@@ -513,7 +521,7 @@ class PathologyExperimentPlanner(object):
 
         self.plans = plans
         self.save_plans(plans)
-        print('[DONE PREPROCESSING]')
+        print('[DONE PLANNING]')
         return plans
 
     def save_plans(self, plans):
@@ -568,20 +576,77 @@ class PathologyExperimentPlanner(object):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset_name_or_id', type=str,
+                        help="Dataset name or ID to train with")
+    parser.add_argument('--gpu_gb', type=int, default=0,
+                        help="Size of the GPU in GB")
+    parser.add_argument('--overwrite_planning', action='store_true',
+                        help="Flag to force planning even if the lock file exists")
+    args = parser.parse_args()
+
+    # GPU stuff
+    if args.gpu_gb == 0:
+        gpu = PathologyExperimentPlanner.get_gpu_size()
+    else:
+        gpu = args.gpu_gb
+    
+    # Init planner
+    planner = PathologyExperimentPlanner(args.dataset_name_or_id, gpu)
+    lock_path= planner.planning_lock_path  # Define the lock file name
+    plans_path = planner.plans_path
+
+    # Define the maximum number of retries and sleep time
+    max_retries = 180  # Try for up to 180 times (20 seconds * 180 = 1 hour)
+    sleep_time = 20    # Sleep for 20 seconds between retries
+
+    # Check if the lock file for planning exists and whether to overwrite planning
+    if (not os.path.exists(lock_path) or args.overwrite_planning) and not os.path.exists(planner.plans_path):
+        # Create a lock file for planning to indicate that planning is in progress
+        open(lock_path, 'w').close()
+
+        # Perform the planning process here, which creates the plans file
+        planner.plan_experiment()
+        
+        # Remove the lock file for planning when planning is done
+        os.remove(lock_path)
+    elif os.path.exists(plans_path):
+        print('[PLANS ALREADY EXIST, SKIPPING PLANNING]')
+    else:
+        print('[PLANNING LOCKED, WAITING FOR RUNNING PLANNER TO FINISH]')
+        retries = 0
+        while os.path.exists(lock_path) and retries < max_retries:
+            time.sleep(sleep_time)
+            retries += 1
+        if os.path.exists(lock_path):
+            print('[TIMED OUT WAITING FOR PLANNER TO FINISH]')
+            # If all retries fail, exit with a custom error code (e.g., 1)
+            print(f"Planning failed after {max_retries} attempts. Exiting.")
+            sys.exit(1)
+        else:
+            print('[DONE PLANNING]')
+
+
+
+
+
     # import argparse
     # parser = argparse.ArgumentParser()
     # parser.add_argument('dataset_name_or_id', type=str,
-    #                     help="Dataset name or ID to train with", default=1)
+    #                     help="Dataset name or ID to train with")
     # parser.add_argument('--gpu_gb',
     #                     help="Size of the GPU in GB", type=int, default=0)
     # args = parser.parse_args()
 
+    # # if args.gpu_gb == 0:
+    # #     print("GPU size not specified, resorting to autmatic extraction of current system's GPU size")
+    # #     args.gpu_gb = PathologyExperimentPlanner.get_gpu_size()
+
+    # # PathologyExperimentPlanner(args.dataset_name_or_id, args.gpu_gb).plan_experiment()
+
     # if args.gpu_gb == 0:
-    #     print("GPU size not specified, resorting to autmatic extraction of current system's GPU size")
-    #     args.gpu_gb = PathologyExperimentPlanner.get_gpu_size()
-
-    # PathologyExperimentPlanner(args.dataset_name_or_id, args.gpu_gb).plan_experiment()
+    #     gpu = PathologyExperimentPlanner.get_gpu_size()
+    # PathologyExperimentPlanner(args.dataset_name_or_id, gpu).plan_experiment()
 
 
-    gpu = PathologyExperimentPlanner.get_gpu_size()
-    PathologyExperimentPlanner(4, gpu).plan_experiment()
+    
