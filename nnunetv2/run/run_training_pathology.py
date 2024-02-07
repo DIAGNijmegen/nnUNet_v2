@@ -209,14 +209,12 @@ def run_training(dataset_name_or_id: Union[str, int],
             print(nnunet_trainer.wandb_name)
             if continue_training: 
                 run = wandb.init(project=f"{nnunet_trainer.plans_manager.dataset_name}", 
-                                entity="joeyspronck", 
                                 name=f'{nnunet_trainer.wandb_name}',
                                 id=f'{nnunet_trainer.wandb_name}', 
                                 resume=True
                                 )
             else:
                 run = wandb.init(project=f"{nnunet_trainer.plans_manager.dataset_name}", 
-                                entity="joeyspronck", 
                                 name=f'{nnunet_trainer.wandb_name}',
                                 id=f'{nnunet_trainer.wandb_name}'
                                 )
